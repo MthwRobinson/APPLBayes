@@ -1,0 +1,1011 @@
+#######################################################################
+# APPL Bayes: A Bayesian Extension to APPL,   2010,   Matthew Robinson
+# Version 2, dated 16 August 2011
+#######################################################################
+#
+# Procedure name: None
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: None
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Start up file for APPL Bayes
+#
+# Arguments: None
+#
+# Outputs: None
+#
+print(`BAYESIAN PROCEDURES:`):
+print(`Posterior(X,Y,x,param)`, `BayesUpdate(X,Y,Data,param)`):
+print(`PosteriorMV(X,data,PriorList,paramList,variables,guess,precision)`):
+print(`PosteriorPredictive(X,Y,Data,param)`,`TwoSample(X,Y,Data1,Data2)`):
+print( `CS(m,s,alpha,n,type)`,'Jeffreys(X,low,high,param)'):
+print(``):
+print(`Procedure Notation:`):
+print(`X is a likelihood function`):
+print(`Y is a prior distribution`):
+print(`x is an observed piece of data`):
+print(`Data is an observed data set`):
+print(`entered as a list --> ex. Data := [1, 12.4, 34, 52.45, 63]`):
+print(`low and high are numeric`):
+print(``):
+print(`Additional Notes:`):
+print(`In order for the Bayesian procedures to run correctly,`):
+print(`unknown parameters must first be unassigned `):
+print(`--> ex. unassign('theta')`):
+print(``):
+#
+#
+#
+#######################################################################
+#
+# Procedure name: Posterior
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. BayesUpdate
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Derive a posterior distribution for a single observation
+#
+# Arguments: 1. X, the likelihood function in APPL random variable 
+#			format
+#	     2. Y, the prior distribution in APPL random variable
+#			format
+#            3. x, a data observation
+#	     4. param, the unknown parameter
+#
+# Outputs: 1. An updated posterior distribution
+#
+Posterior:=proc(X,Y,x,param)
+local PostFunc,prior,likelihood,proppost,posterior,FunctionList,
+ FunctionList2,likelihood1,likelihood2, List1, marginal, subslike, 
+posteriorlist, List2, priorXlike, i, k, j, t,l,numlists;
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(Posterior): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that the RV Y is in the list of 3 lists format
+#
+numlists:=nops(Y):
+if (numlists<>3) then
+  print(`ERROR(Posterior): The RV Y must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that param is of type symbol
+#
+if type(param,symbol)<>true then
+  print(`ERROR(Posterior): param must be a symbol`):
+  return:
+end if;
+#
+#
+#
+unassign('param');param;
+likelihood:=X[1][](x);
+#
+# Build he proportional posterior list of lists
+#
+FunctionList:=[];
+for i from 1 to nops(Y[1]) do
+	prior := Y[1][i][](param);
+	proppost := combine(simplify(likelihood*prior));
+	FunctionList := [op(FunctionList), proppost];
+end do;
+#
+# Calculate the normalizing constant
+#
+k := sum(int(FunctionList[j], param= Y[2][j] .. Y[2][j+1]), j = 1 ..
+ nops(FunctionList));
+#
+# Compute the Posterior
+#
+FunctionList2:=[];
+for l from 1 to nops(FunctionList) do
+	FunctionList2 := [op(FunctionList2),
+ unapply(FunctionList[l]/k, param)];
+end do;
+#
+# Convert to APPL data structure
+#
+PostFunc := [FunctionList2, Y[2], ["Continuous", "PDF"]]:
+RETURN(PostFunc);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: BayesUpdate
+#
+# Other APPL Procedures Called: 1. Posterior
+#  
+# Called in other APPL Procedures: 1. PosteriorPredictive
+#				   2. TwoSample
+#
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Derive a posterior distribution for a vector of 
+#		observations
+#
+# Arguments: 1. X, the likelihood function in APPL random variable 
+#			format
+#	     2. Y, the prior distribution in APPL random variable
+#			format
+#            3. data, a vector of data (entered as a list)
+#	     4. param, the unknown parameter
+#
+# Outputs: 1. An updated posterior distribution
+#
+BayesUpdate:=proc(X,Y,data,param)
+local i,T,PostFunc,numlists:
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(BayesUpdate): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that the RV Y is in the list of 3 lists format
+#
+numlists:=nops(Y):
+if (numlists<>3) then
+  print(`ERROR(BayesUpdate): The RV Y must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that param is of type symbol
+#
+if type(param,symbol)<>true then
+  print(`ERROR(BayesUpdate): param must be a symbol`):
+  return:
+end if;
+#
+#
+#
+PostFunc:=Posterior(X,Y,data[1],param):
+if nops(data)>1 then
+	for i from 2 to nops(data) do
+		T:=PostFunc:
+		PostFunc:=Posterior(X,T,data[i],param):
+	end do:
+end if:
+RETURN(PostFunc);
+end proc:	
+#
+#
+#
+#######################################################################
+#
+# Procedure name: PosteriorPredictive
+#
+# Other APPL Procedures Called: 1. BayesUpdate
+#  
+# Called in other APPL Procedures: 1. None
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Derive a posterior predictive distribution 
+#		from a vector of data
+#
+# Arguments: 1. X, the likelihood function in APPL random variable 
+#			format
+#	     2. Y, the prior distribution in APPL random variable
+#			format
+#            3. data, a data vector, entered as a list
+#	     4. param, the unknown parameter
+#
+# Outputs: 1. A posterior predictive distribution
+#  
+PosteriorPredictive:=proc(X,Y,data,param)
+local posterior2,likelihood2,i, PredFunction,PostFunc,
+postpredict,PostPred,numlists,posteriorList,intList;
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(PosteriorPredictive): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that the RV Y is in the list of 3 lists format
+#
+numlists:=nops(Y):
+if (numlists<>3) then
+  print(`ERROR(PosteriorPredictive): The RV Y must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that param is of type symbol
+#
+if type(param,symbol)<>true then
+  print(`ERROR(PosteriorPredictive): param must be a symbol`):
+  return:
+end if;
+#
+#
+#
+PostFunc:=BayesUpdate(X,Y,data,param);
+#posterior2:=PostFunc[1][](param);
+posteriorList:=[];
+for i from 1 to nops(PostFunc[1]) do
+	posteriorList:=[op(posteriorList),PostFunc[1][i](param)];
+end do;
+likelihood2:=X[1][](y);
+intList:=[];
+for i from 1 to nops(PostFunc[1]) do
+	intList:=[op(intList),posteriorList[i]*likelihood2];
+end do;
+postpredict:=0;
+for i from 1 to nops(PostFunc[1]) do
+	postpredict:=postpredict+int(intList[i],param=PostFunc[2][i]..PostFunc[2][i+1]);
+end do;
+#postpredict := simplify(int(posterior2*likelihood2,
+#param= Y[2][1] .. Y[2][2]));
+#postpredict:=simplify(postpredict);
+RETURN([[unapply(postpredict, y)], X[2], X[3]]);
+end proc:
+#
+#
+#######################################################################
+#
+# Procedure name: TwoSample
+#
+# Other APPL Procedures Called: 1. BayesUpdate
+#  
+# Called in other APPL Procedures: 1. None
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Conduct Bayesian updating on the difference between two
+#		samples
+#
+# Arguments: 1. X, the likelihood function in APPL random variable 
+#			format
+#	     2. Y, the prior distribution in APPL random variable
+#			format
+#            3. data1, the first data vector
+#	     4. data2, the second data vector
+#
+# Outputs: 1. The distribution of mu1-mu2, where mu1 is the mean
+#		of the first data set and mu2 is the mean of the
+#		second data set
+#
+TwoSample:=proc(X,Y,data1,data2,param)
+local U1,U2,mprimed,sprimed,Difference,numlists;
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(TwoSample): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that the RV Y is in the list of 3 lists format
+#
+numlists:=nops(Y):
+if (numlists<>3) then
+  print(`ERROR(TwoSample): The RV Y must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that param is of type symbol
+#
+if type(param,symbol)<>true then
+  print(`ERROR(TwoSample): param must be a symbol`):
+  return:
+end if;
+#
+#
+#
+U1:=BayesUpdate(X,Y,data1,param);
+U2:=BayesUpdate(X,Y,data2,param);
+mprimed:=Mean(U1)-Mean(U2);
+sprimed:=abs(sqrt(Variance(U1)+Variance(U2)));
+Difference:=NormalRV(mprimed,sprimed);
+RETURN(Difference);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: Jeffreys
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: None
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Derive the Jeffrey's prior that corresponds to a 
+#		likelihood function
+#
+# Arguments: 1. X, the likelihood function in APPL random variable 
+#			format
+#	     2. low, the lower limit of the parameter
+#            3. high, the upper limit of the parameter
+#	     4. param, the unknown parameter
+#
+# Outputs: 1. A Jeffrey's prior distribution for the unknown 
+#		parameter
+
+#
+Jeffreys:=proc(X,support,param)
+local likelihood,loglike,logdiff,jefffunc,JeffreysPrior,numlists,
+	likelihoodlist;
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(Jeffreys): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that param is of type symbol
+#
+if type(param,symbol)<>true then
+  print(`ERROR(Jeffreys): param must be a symbol`):
+  return:
+end if;
+#
+#
+#
+if X[3][1]="Discrete" then
+	unassign('param');param;
+	likelihood:=X[1][](x);
+	loglike:=ln(likelihood);
+	logdiff:=simplify(diff(loglike,param));
+	jefffunc:=sqrt(sum(likelihood*logdiff^2,x = X[2][]));
+	JeffreysPrior:=[[unapply(jefffunc,param)],[low,high],X[3]];
+elif X[3][1]="Continuous" then
+	unassign('param');param;
+	likelihood:=X[1][](x);
+	loglike:=ln(likelihood);
+	logdiff:=simplify(diff(loglike,param));
+	jefffunc:=sqrt(int(likelihood*logdiff^2,x = X[2][1]..X[2][2]));
+	JeffreysPrior:=[[unapply(jefffunc,param)],[low,high],X[3]];
+end if;
+RETURN(JeffreysPrior);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: Likelihood
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Derive a likelihood function, given a data set
+#
+# Arguments: 1. X, the likelihood function in APPL random variable 
+#			format
+#	     2. data, the data sets, one for each variable, in
+#			list-of-sublist format
+#	     3. variables, the list of variables in the likelihood
+#			function
+#
+# Outputs: 1. A likelihood function
+#
+Likelihood:=proc(X,data,variables)
+local like,likefunc,newdatafunc,n,m,i,j;
+like:=X[1][](variables[1]);
+likefunc:=1; 
+m:=nops(variables);
+n:=nops(data[1]);
+for j from 1 to n do
+	newdatafunc:=like;
+	for i from 1 to m do
+		newdatafunc:=subs(variables[i]=data[i][j],newdatafunc);
+	end do;
+	likefunc:=likefunc*newdatafunc;
+end do;
+RETURN(likefunc);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: FindRoot
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. Find Mode
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Find the root of a function
+#
+# Arguments: 1. function, a function
+#	     2. paramList, a list of parameters in the function
+#	     3. guess, an initial guess of the maximum value
+#	     4. i, index value, used in the Find Mode procedure
+#
+# Outputs: 1. The root of a function
+#
+FindRoot:=proc(posteriorsUpdate,paramList,guess,i)
+local func,difffunc,lowerguess,upperguess,a,b,signleft,
+signright,j,midguess,c,signmid;
+#
+# Find root using bisection search
+#
+func:=posteriorsUpdate[i];
+difffunc:=unapply(diff(func,paramList[i]),paramList[i]);
+lowerguess:=guess[i]-abs(.5*guess[i]);
+upperguess:=guess[i]+abs(.5*guess[i]);
+a:=difffunc(lowerguess);
+b:=difffunc(upperguess);
+signleft:=sign(a);
+signright:=sign(b);
+if signright=signleft then
+	for i from 1 by 1 while signright=signleft do
+		lowerguess:=lowerguess-abs(.5*guess[i]);
+		upperguess:=upperguess+abs(.5*guess[i]);
+		a:=difffunc(lowerguess);
+		b:=difffunc(upperguess);
+		signleft:=sign(a);
+		signright:=sign(b);
+	end do;
+end if;
+for j from 1 by 1 while (upperguess-lowerguess)>.0001 do
+	midguess:=evalf((upperguess+lowerguess)/2);
+	#print(j,midguess);
+	c:=difffunc(midguess);
+	signmid:=sign(c);
+	if signmid=signleft then
+		lowerguess:=midguess;
+	else
+		upperguess:=midguess;
+	end if;
+end do;
+RETURN(midguess);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: GoldenSection
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. FindMode
+#				   2. UpdatePosteriorsMode
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Derive a posterior distribution for a single observation
+#
+# Arguments: 1. functionlist, a function
+#	     2. paramList, a list of parameters
+#	     3. guess, a list of initial guess values
+#	     4. j, an index used in the FindMode procedure
+#
+GoldenSection:=proc(posteriorsUpdate,paramList,guess,j)
+local c,x1,fx1,x2,fx2,a,b,i,func,tau;
+tau:=.00001;
+func:=unapply(-posteriorsUpdate[j],paramList[j]);
+a:=guess[j]-abs(.5*guess[j]);
+b:=guess[j]+abs(.5*guess[j]);
+c := (sqrt(5)-1)*(1/2);
+x1:=c*a+(1-c)*b;
+fx1:=evalf(func(x1));
+x2:=(1-c)*a+c*b;
+fx2:=evalf(func(x2));
+for i from 1 by 1 while evalf(abs(a-b))>tau do
+	if evalf(fx1)<evalf(fx2) then
+		b:=x2;
+		x2:=x1;
+		fx2:=fx1;
+		x1:=c*a+(1-c)*b;
+		fx1:=evalf(func(x1));
+	else
+		a:=x1;
+		x1:=x2;
+		fx1:=fx2;
+		x2:=(1-c)*a+c*b;
+		fx2:=evalf(func(x2));
+	end if;
+	if evalf(abs(a-b))<tau then
+		RETURN(evalf((b+a)*(1/2)));
+	end if;
+end do;
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: FindMode
+#
+# Other APPL Procedures Called: 1. GoldenSection
+#			        2. FindRoot
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Find the Mode of a set of distributions
+#
+# Arguments: 1. functionlist, a list of distribution functions
+#	     2. paramList, a list of unknown parameters
+#            3. guess, a list of initial guesses
+#
+# Outputs: 1. A list of modes
+#
+FindMode:=proc(posteriorsUpdate,paramList,guess)
+local guessUpdate,i,func,logfunc,difflogfunc,paramsubs,maxvalue;
+guessUpdate:=[]:
+for i from 1 to nops(paramList) do
+	#x1:=guess[i]-abs(.5*guess[i]);
+	#x2:=guess[i];
+	#x3:=guess[i]+abs(.5*guess[i]);
+	#func:=unapply(posteriorsUpdate[i],paramList[i]);
+	#guessUpdate:=[op(guessUpdate),GoldenSection(func,x1,x2,x3,.00001)];
+	#guessUpdate:=[op(guessUpdate),FindRoot(posteriorsUpdate,paramList,guess,i)];
+	guessUpdate:=[op(guessUpdate),GoldenSection(posteriorsUpdate,paramList,guess,i)];
+end do;
+RETURN(guessUpdate);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: UpdatePosteriorsMode
+#
+# Other APPL Procedures Called: 1. GoldenSection
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Update the modes posterior distributions
+#
+# Arguments: 1. likefunc, a likelihood function
+# 	     2. PriorList, a list of prior distributions
+#	     3. paramList, a list of parameters
+#	     4. guess, a list of initial guesses
+#
+# Outputs: 1. an updated list of posterior distribution modes
+#
+UpdatePosteriorsMode:=proc(likefunc,PriorList,paramList,guess)
+local guessupdate,guessint,i,likeupdate,j,prior,postupdate,midguess;
+guessupdate:=[];
+guessint:=guess;
+for i from 1 to nops(paramList) do
+	likeupdate:=likefunc;
+	for j from 1 to nops(paramList) do
+		if j<>i then
+			likeupdate:=
+			simplify(subs(paramList[j]=guessint[j],likeupdate));
+		end if;
+	end do;
+	prior:=PriorList[i][1][](paramList[i]);
+	postupdate:=simplify(likeupdate*prior);
+	#midguess:=FindRoot([likeupdate],[paramList[i]],[guessint[i]],1);
+	midguess:=GoldenSection([likeupdate],[paramList[i]],[guessint[i]],1);
+	#func:=unapply(likeupdate,paramList[i]);
+	#x1:=guess[i]-(.5*guess[i]);
+	#x2:=guess[i];
+	#x3:=guess[i]+(.5*guess[i]);
+	#midguess:=GoldenSection(func,x1,x2,x3,.00001);
+	guessint:=subsop(i=midguess,guessint);
+	guessupdate:=[op(guessupdate),midguess];
+end do;
+RETURN(guessupdate);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: updatePosteriors
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Update the posterior distributions
+#
+# Arguments: 1. likefunc, a likelihood function
+# 	     2. PriorList, a list of prior distributions
+#	     3. paramList, a list of parameters
+#	     4. guess, a list of initial guesses
+#
+# Outputs: 1. An updated posterior distribution
+#
+UpdatePosteriors:=proc(likefunc,PriorList,paramList,guess)
+local likeupdateList,i,likeupdate,j,prior,postupdate,postupdateList;
+#
+# Substitute into the likelihood functions
+#
+likeupdateList:=[]:
+for i from 1 to nops(paramList) do
+	likeupdate:=likefunc;
+	for j from 1 to nops(paramList) do
+		if j<>i then
+			likeupdate:=(subs(paramList[j]=guess[j],likeupdate));
+		end if;
+	end do;
+	likeupdateList:=[op(likeupdateList),likeupdate];
+end do;
+#
+# Multiply priors by likelihoods
+#
+postupdateList:=[];
+for i from 1 to nops(paramList) do
+	prior:=PriorList[i][1][](paramList[i]):
+	postupdate:=(likeupdateList[i]*prior):
+	postupdateList:=[op(postupdateList),postupdate]:
+end do;
+#print(postupdateList);
+RETURN(postupdateList);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: FindConstant
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Calculate the normalizing constant of a distribution
+#
+# Arguments: 1. function, a function
+# 	     2. PriorList, a list of prior distributions
+#	     3. paramList, a list of parameters
+#
+# Outputs: 1. a list of normalizing constants
+#
+FindConstant:=proc(bestpost,PriorList,paramList)
+local constantList,i,func,constant1,low,high;
+constantList:=[];
+for i from 1 to nops(paramList) do
+	func:=bestpost[i];
+	print("Ready for Constant", i);
+	if PriorList[i][2][2]=infinity then
+		high:=10000:
+                # print(makingadjustment);
+	else
+		high:=PriorList[i][2][2]:
+	end if:
+	if PriorList[i][2][1]=-infinity then
+		low:=-10000:
+	else
+		low:=PriorList[i][2][1]:
+	end if;
+	use Student:-NumericalAnalysis in
+		constant1:=evalf(Quadrature(func, paramList[i] = 
+		low ..high, method = gaussian[10])):
+		#print(inQuadratureOutput,constant1);
+		constantList:=[op(constantList),constant1];
+        end use;
+end do;
+RETURN(constantList);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: NormalizeRV
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Normalize a random variable
+#
+# Arguments: 1. X, a random variable in APPL random variable format
+#
+# Outputs: 1. A normalized random variable
+#
+NormalizeRV:=proc(X)
+local area, outputX, fx, high, low,i;
+#area := int(X[1][1](x), x = X[2][1] .. X[2][2]);
+if X[2][2]=infinity then
+			high:=10000:
+                       # print(makingadjustment);
+		else
+			high:=X[2][2]:
+		end if:
+		if X[2][1]=-infinity then
+			low:=-10000:
+		else
+			low:=X[2][1]:
+		end if;
+use Student:-NumericalAnalysis in
+	area:=Quadrature(X[1][1](x),x=low..high,method=gaussian[20]);
+	print("The area is", area);
+end use;
+#if area>1.0001 or area<.9999 then
+#	for i from 1 by 1 while area>1.0001 or area<.9999 do
+#	   use Student:-NumericalAnalysis in
+#	   area:=Quadrature(X[1][1](x),x=low..high,method=gaussian[10]);
+#	   end use;
+#	end do;
+#end if;
+fx := X[1][1](x);
+outputX := [[unapply(simplify(fx/area), x)], X[2], X[3]]; 
+RETURN(outputX);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: FinalPosterior
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: 1. PosteriorMV
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Generate a final list of posterior distributions
+#
+# Arguments: 1. bestpost, the list of the proportional posteriors
+#	     2. PriorList, the list of the prior distributions
+#	     3. constantList, the list of the constants for 
+# 			each distribution
+#	     4. paramList, the list of parameters
+#
+# Outputs:   1. posteriorsFinal, the list of final posteriors
+#
+FinalPosterior:=proc(bestpost,PriorList,constantList,paramList)
+local funclist, i, normalizedFunc, FinalList,FinalFinalList;
+funclist:=[];
+for i from 1 to nops(bestpost) do
+	normalizedFunc:=bestpost[i]/constantList[i];
+	funclist:=[op(funclist),normalizedFunc];
+end do;
+FinalList:=[];
+for i from 1 to nops(bestpost) do
+	FinalList:=[op(FinalList), [[unapply(funclist[i],paramList[i])],PriorList[i][2],PriorList[i][3]]];
+end do;
+FinalFinalList:=[]:
+for i from 1 to nops(FinalList) do
+	FinalFinalList:=[op(FinalFinalList),(FinalList[i])];
+end do;
+RETURN(FinalFinalList);
+end proc:
+#
+#######################################################################
+#
+# Procedure name: PosteriorMV
+#
+# Other APPL Procedures Called: 1. Likelihood
+#				2. UpdatePosteriors
+#				3. FindMode
+#				4. UpdatePosteriorsMode
+#				5. FindConstant
+#  
+# Called in other APPL Procedures: None
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Generate a list of approximate marginal posterior
+#		distributions
+#
+# Arguments: 1. X, the likelihood function, in APPL RV format
+#	     2. data, a list of data vectors, entered as a list of
+#		sub-lists
+#	     3. PriorList, the list of prior distributions
+#	     4. paramList, the list of unknown parameters
+#	     5. variables, the list of variables in the likelihood
+#	     6. guess, a list of initial guesses
+#	     7. precision, the precision of the algorithm
+#
+# Outputs:   A list of approximate marginal posterior distributions
+#
+PosteriorMV:=proc(X,data,PriorList,paramList,variables,guess,precision)
+local likefunc,updatedPosteriors,newguess,change,oldguess,i,j,constant,
+	numlists;
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(PosteriorMV): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that the RV Y is in the list of 3 lists format
+#
+for i from 1 to nops(PriorList) do
+	numlists:=nops(PriorList[i]):
+	if (numlists<>3) then
+ 	  print(`ERROR(PosteriorMV): Prior RVs must be a list of 3 lists`):
+  	  return:
+	fi:
+end do;
+#
+# Check that param is of type symbol
+#
+for i from 1 to nops(paramList) do
+  if type(paramList[i],symbol)<>true then
+    print(`ERROR(PosteriorMV): param must be a symbol`):
+    return:
+  end if;
+end do;
+#
+# Check that guesses are numeric
+#
+for i from 1 to nops(guess) do
+	if type(guess[i],numeric)<>true then
+	  print(`ERROR(PosteriorMV): guesses must be numeric`):
+	  return;
+        end if;
+end do;
+#
+# Check that precision is numeric
+#
+if type(precision,numeric)<> true then
+	print(`ERROR(PosteriorMV): precision must be numeric`):
+	return;
+end if;
+#
+# Generate the likelihood function, given the data set
+#
+likefunc := Likelihood(X, data, variables);
+#
+# Update the posteriors and generate a new guess
+#
+updatedPosteriors:=UpdatePosteriors(likefunc,PriorList,paramList,guess);
+newguess:=FindMode(updatedPosteriors,paramList,guess);
+#print("Got to here");
+#
+# Iterate until the functions converge
+#
+change := [1, 1];
+for i from 1 to 100000 while max(change)>precision do
+	oldguess := newguess;
+	#updatedPosteriors := UpdatePosteriors(likefunc, PriorList, paramList, oldguess);
+	#newguess := FindMode(updatedPosteriors, paramList, oldguess);
+	newguess:=UpdatePosteriorsMode(likefunc,PriorList,paramList,oldguess);
+	print(i,newguess);
+	change:=[]:
+	for j from 1 to nops(paramList) do
+		change := [op(change), abs((newguess[j]-oldguess[j])/oldguess[j])];
+	end do;
+	print(change);	
+end do;
+updatedPosteriors:=UpdatePosteriors(likefunc, PriorList, paramList, oldguess);
+constant:=FindConstant(updatedPosteriors,PriorList,paramList);
+#print("The constants are", constant);
+RETURN(FinalPosterior(updatedPosteriors,PriorList,constant,paramList));
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: CredibleSet
+#
+# Other APPL Procedures Called: None
+#  
+# Called in other APPL Procedures: None
+#
+# Date Revised: 08 April 2011
+#
+# Purpose: Create a credible
+#
+# Arguments: 1. X, a posterior distribution in APPL RV format
+#	     2. alpha, the confidence level
+#
+# Outputs:   A credible set to confidence level alpha
+#
+CredibleSet:=proc(X,alpha)
+local lower,upper,numlists;
+#
+# Check that the RV X is in the list of 3 lists format
+#
+numlists := nops(X):
+if (numlists <> 3) then
+  print(`ERROR(CredibleSet): The RV X must be a list of 3 lists`):
+  return:
+fi:
+#
+# Check that alpha is numeric
+#
+if type(alpha,numeric)<>true then
+	print(`ERROR(CredibleSet): alpha must be numeric`):
+	return;
+end if;
+lower:=CriticalPoint(X,alpha/2);
+upper:=CriticalPoint(X,1-alpha/2);
+RETURN(lower,upper);
+end proc:
+#
+#
+#
+#######################################################################
+#
+#  Procedure name: VarPoisson(mu);
+#
+#  Other APPL Procedures Called: none
+#             
+#  Date Revised: January 25, 2011
+#
+#  Purpose:  Produces Poisson Random Variable variates
+#
+#  Arguments: 1. mu, the parameter of the Poisson distribution
+#
+#  Outputs: A random poisson variate
+#
+RNG:=proc()
+(1/1000000000000)*rand():
+end proc:
+VarPoisson:=proc(mu)
+local a, x,i;
+a:=0;
+x:=0;
+for i from 1 by 1 while(a<mu) do
+	a:=a+evalf(CriticalPoint(ExponentialRV(1),RNG()));
+	x:=x+1;
+end do;
+RETURN(x-1);
+end proc:
+#
+#
+#
+#######################################################################
+#
+# Procedure name: ListVariables
+#
+# Other APPL Procedures Called: None
+#
+# Called in other APPL procedures: None
+# 
+# Date Revised: 03 June 2011
+#
+# Purpose: List the variables in function
+#
+# Arguments: X, a random variable in APPL list of lists format
+#
+# Outputs: A list of variables in a function
+#
+ListVariables:=proc(X::list(list))
+local varlist;
+varlist:=[op(1,X[1][])];
+RETURN(varlist);
+end proc:
+#######################################################################
+# END #
+#######################################################################
+
+
+
+
+
